@@ -3,7 +3,7 @@ import pipes
 import time
 import socket
 
-from . import handler
+import handler
 
 
 class ParameterServer(object):

@@ -4,7 +4,7 @@ AUTOMAKE_OPTIONS = foreign
 
 CXX = g++
 
-bin_PROGRAMS = parameter_server ps_test csv_to_libsvm $(TOP_DIR)/tests/test_travis_lr/test_lr \
+bin_PROGRAMS = parameter_server ps_test csv_to_libsvm get_s3_object $(TOP_DIR)/tests/test_travis_lr/test_lr \
                $(TOP_DIR)/tests/test_travis_lr/test_ps $(TOP_DIR)/tests/test_travis_lr/worker \
                $(TOP_DIR)/tests/test_travis_lr/error
 
@@ -20,10 +20,10 @@ LINCLUDES    = -L$(TOP_DIR)/third_party/aws-sdk-cpp/build/aws-cpp-sdk-core/ \
 	       -L$(TOP_DIR)/third_party/curl/curl/lib/.libs/
 
 LDADD    = $(LINCLUDES) $(LIBS)
-LDFLAGS  = -static-libgcc  -static  -Wl,--whole-archive \
-	   -lpthread -Wl,--no-whole-archive
+LDFLAGS  = -Wl,--whole-archive \
+	   -pthread -Wl,--no-whole-archive
 
-CPPFLAGS = -static -static-libgcc -static-libstdc++ \
+CPPFLAGS = -libgcc -libstdc++ \
            -I$(TOP_DIR) \
            -I$(TOP_DIR)/third_party/flatbuffers/include \
            -I$(TOP_DIR)/third_party/eigen_source \
@@ -55,6 +55,8 @@ parameter_server_SOURCES  = parameter_server.cpp $(CPP_SOURCES)
 ps_test_SOURCES = PSSparseServerTaskTest.cpp $(CPP_SOURCES)
 
 csv_to_libsvm_SOURCES = CriteoCsvToLibSVM.cpp $(CPP_SOURCES)
+
+get_s3_object_SOURCES = get_s3_object.cpp $(CPP_SOURCES)
 
 __TOP_DIR__tests_test_travis_lr_test_lr_SOURCES = $(TOP_DIR)/tests/test_travis_lr/check_correctness_cirrus_sgd.cpp $(CPP_SOURCES)
 

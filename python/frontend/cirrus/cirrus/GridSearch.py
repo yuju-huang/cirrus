@@ -8,9 +8,9 @@ import math
 
 import graph
 from utils import *
-from . import automate
-from . import configuration
-from . import parameter_server
+import automate
+import configuration
+import parameter_server
 
 logging.basicConfig(filename="cirrusbundle.log", level=logging.WARNING)
 

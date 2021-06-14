@@ -9,7 +9,7 @@ import threading
 
 import paramiko
 
-from .resources import resources
+import aws_resources
 
 # The ARN of an IAM policy that allows full access to S3.
 S3_FULL_ACCESS_ARN = "arn:aws:iam::aws:policy/AmazonS3FullAccess"
@@ -24,6 +24,7 @@ INSTANCE_ACTION_URL = "http://169.254.169.254/latest/meta-data/spot/" \
 #   AWSEC2/latest/UserGuide/spot-interruptions.html.
 TERMINATION_MONITORING_INTERVAL = 5
 
+REGION = "us-east-2"
 
 # The SSH keepalive interval to use for SSH connections to instances, in
 #   seconds.
@@ -119,7 +120,7 @@ class Instance(object):
         Deletes any existing key pair with the same name. Saves the private key
             to `~/cirrus_key_pair.pem`.
         """
-        from . import automate
+        import automate
 
         log = logging.getLogger("cirrus.instance.Instance.set_up_key_pair")
 
@@ -150,7 +151,7 @@ class Instance(object):
 
         Deletes any existing security groups with the same name.
         """
-        from . import automate
+        import automate
 
         log = logging.getLogger(
             "cirrus.instance.Instance.set_up_security_group")
@@ -190,7 +191,7 @@ class Instance(object):
 
         Deletes any existing role with the same name.
         """
-        from . import automate
+        import automate
 
         log = logging.getLogger("cirrus.instance.Instance.set_up_role")
 
@@ -252,7 +253,7 @@ class Instance(object):
         Deletes any existing instance profile with the same name. The instance
             role must have already been created.
         """
-        from . import automate
+        import automate
 
         log = logging.getLogger(
             "cirrus.instance.Instance.set_up_instance_profile")
@@ -316,6 +317,7 @@ class Instance(object):
         self._spot_bid = spot_bid
         self._log = logging.getLogger("cirrus.instance.Instance")
 
+        print("In Instance", resources)
         if self._ami_id is None:
             assert ami_owner_name is not None, \
                 "When ami_id is not specified, ami_owner_name must be."
@@ -479,13 +481,14 @@ class Instance(object):
                 If relative, then relative to the home folder of this instance's
                 SSH user.
         """
-        from . import automate
+        import automate
 
         assert src.startswith("s3://")
         assert not dest.startswith("s3://")
 
         bucket, key = automate._split_s3_url(src)
-        self.run_command("wget http://%s.s3.amazonaws.com/%s -O %s"
+
+        self.run_command("wget http://%s.s3.us-east-2.amazonaws.com/%s -O %s"
                          % (bucket, key, dest))
 
 
@@ -766,3 +769,6 @@ class Instance(object):
         if self._ssh_client is None:
             self._connect_ssh()
         self._sftp_client = self._ssh_client.open_sftp()
+
+resources = aws_resources.get_resource()
+print("In instance.py, resources=", resources)

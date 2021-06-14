@@ -6,8 +6,7 @@ import logging
 import boto3
 import botocore
 
-from . import configuration
-
+import configuration
 
 class ResourceManager(object):
     """A manager of cached AWS resources.
@@ -56,7 +55,7 @@ class ResourceManager(object):
         Returns:
             botocore.client.BaseClient: The client.
         """
-        from . import automate
+        import automate
         self._lambda_client_no_retries_ready.wait()
         return self._lambda_client_no_retries
 
@@ -146,7 +145,7 @@ class ResourceManager(object):
 
 
     def _initialize(self):
-        from . import automate
+        import automate
 
         # Lambda client
         self._log.debug("Initializing Lambda client.")
@@ -188,6 +187,13 @@ class ResourceManager(object):
         self._sts_client = boto3.client("sts", self._region)
         self._sts_client_ready.set()
 
+def get_resource():
+    try:
+        region = configuration.config(False)["aws"]["region"]
+        resources = ResourceManager(region)
+    except KeyError:
+        resources = None
+    return resources
 
 # If a region is configured, create the resource manager. If not, the setup
 #   script will create it after the region is configured.

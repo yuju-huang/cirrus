@@ -81,4 +81,4 @@ touch config.rpath
 autoreconf
 automake --add-missing
 autoreconf
-./configure
+./configure --prefix=$PWD/out

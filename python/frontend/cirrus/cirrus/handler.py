@@ -6,6 +6,9 @@ import time
 import socket
 import struct
 
+import boto3
+import io
+
 # The path at which to save the configuration in a worker Lambda.
 CONFIG_PATH = "/tmp/config.cfg"
 
@@ -26,7 +29,7 @@ PS_CONNECTION_TIMEOUT = 5
 
 # The size of buffer to use for relaying the worker's output to the Lambda's
 #   output, in bytes.
-WORKER_OUTPUT_BUFFER = 100
+WORKER_OUTPUT_BUFFER = 200
 
 
 def register(ps_ip, ps_port, task_id, time_left):
@@ -90,7 +93,32 @@ def deregister(ps_ip, ps_port, task_id):
     return result == 0
 
 
-def run(event, context):
+def do_ls(log, path):
+    log.debug("ls -al %s" % path)
+    command = ["ls",
+               "-al",
+                path]
+    process = subprocess.Popen(command, stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT)
+    log.debug(process.stdout.read(WORKER_OUTPUT_BUFFER))
+
+
+#BUCKET = "criteo-kaggle-19b"
+#KEY = "0"
+#REGION = "us-west-2"
+BUCKET = "cirrus-bucket-390693756238"
+KEY = "test"
+REGION = "us-east-2"
+OUT_NAME = "s3_out"
+
+def get_s3_object():
+    s3 = boto3.client("s3", REGION)
+    f = io.BytesIO()
+    s3.download_fileobj(BUCKET, KEY, f)
+    f.seek(0)
+    print(f.read())
+
+def run(event, context, local=False):
     """Respond to a request that a worker be run.
 
     Args:
@@ -114,14 +142,15 @@ def run(event, context):
     log = logging.getLogger("cirrus.handler.run")
 
     # Attempt to catch any errors that arise, to enable better logging.
-    log.debug("This is an invocation of %s, version %s."
-              % (context.function_name, context.function_version))
-    log.debug("Logging to stream `%s`." % context.log_stream_name)
-    log.debug("Logging to group `%s`." % context.log_group_name)
-    log.debug("The request ID is %s." % context.aws_request_id)
-    log.debug("The memory limit is %sMB." % context.memory_limit_in_mb)
-    log.debug("The time remaining is %dms."
-              % context.get_remaining_time_in_millis())
+    if local == False:
+        log.debug("This is an invocation of %s, version %s."
+                  % (context.function_name, context.function_version))
+        log.debug("Logging to stream `%s`." % context.log_stream_name)
+        log.debug("Logging to group `%s`." % context.log_group_name)
+        log.debug("The request ID is %s." % context.aws_request_id)
+        log.debug("The memory limit is %sMB." % context.memory_limit_in_mb)
+        log.debug("The time remaining is %dms."
+                  % context.get_remaining_time_in_millis())
 
     task_id = event["task_id"]
     num_workers = event["num_workers"]
@@ -131,15 +160,21 @@ def run(event, context):
     try:
         log.debug("This is Task %d, interfacing with %s:%d."
                   % (task_id, ps_ip, ps_port))
+        log.debug("log level=%s" % level)
 
         # Attempt to register with the parameter server; abort if a duplicate
         #   invocation with the same worker ID has already won the race.
         log.debug("Attempting registration.")
+        if local == True:
+            remaining_time_in_millis = lambda: 1000000
+        else:
+            remaining_time_in_millis = context.get_remaining_time_in_millis
+
         registration_succeeded = register(
             ps_ip,
             ps_port,
             task_id,
-            context.get_remaining_time_in_millis
+            remaining_time_in_millis
         )
         if not registration_succeeded:
             log.info("Terminating due to registration failure.")
@@ -155,8 +190,35 @@ def run(event, context):
             config_file.write(event["config"])
         log.debug("Wrote config.")
 
+        """
+        do_ls(log, os.environ["LAMBDA_TASK_ROOT"]) 
+        do_ls(log, "/tmp/")
+
+        log.debug("Call get_s3_object (python)")
+        get_s3_object()
+        """
+
+        # Run the worker, relaying its output to our output.
+        """
+        command = [
+            # Reference the bootstrap built by aws-cpp-sdk's example.
+            # (/home/yh885/aws/tutorial/s3/get_s3_object/cpp_exec/customized_lambda)
+            # $LAMBDA_TASK_ROOT/lib/ld-linux-x86-64.so.2 --library-path $LAMBDA_TASK_ROOT/lib $LAMBDA_TASK_ROOT/get_s3_object
+            os.path.join(os.environ["LAMBDA_TASK_ROOT"], "lib/ld-linux-x86-64.so.2"),
+            "--library-path",
+            os.path.join(os.environ["LAMBDA_TASK_ROOT"], "lib"),
+            os.path.join(os.environ["LAMBDA_TASK_ROOT"], "get_s3_object")
+        ]
+        log.debug("Starting worker with command `%s`." % " ".join(command))
+        logfile = open('/tmp/handler.log', 'w+')
+        process = subprocess.Popen(command, stdout=logfile, stderr=subprocess.STDOUT)
+        """
+
         # Run the worker, relaying its output to our output.
         command = [
+            os.path.join(os.environ["LAMBDA_TASK_ROOT"], "lib/ld-linux-x86-64.so.2"),
+            "--library-path",
+            os.path.join(os.environ["LAMBDA_TASK_ROOT"], "lib"),
             os.path.join(os.environ["LAMBDA_TASK_ROOT"], EXECUTABLE_NAME),
             "--config", CONFIG_PATH,
             "--nworkers", str(num_workers),
@@ -165,6 +227,7 @@ def run(event, context):
             "--ps_port", str(ps_port)
         ]
         log.debug("Starting worker with command `%s`." % " ".join(command))
+        logfile = open('/tmp/handler.log', 'w+')
         process = subprocess.Popen(command, stdout=subprocess.PIPE,
                                    stderr=subprocess.STDOUT)
         for buf in iter(lambda: process.stdout.read(WORKER_OUTPUT_BUFFER), b''):
@@ -173,6 +236,18 @@ def run(event, context):
         # Wait for the worker process to exit.
         while process.poll() is None:
             time.sleep(EXIT_POLL_INTERVAL)
+
+        """
+        # Dump logfile
+        logfile.seek(0)
+        while True:
+            # Get next line from file
+            line = logfile.readline()
+
+            if not line:
+                break
+            print(line.strip())
+        """
 
         # Check the exit code of the worker process.
         if process.returncode >= 0:

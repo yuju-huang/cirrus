@@ -12,9 +12,9 @@ import logging
 import boto3
 import botocore.exceptions
 
-from . import configuration
-from . import automate
-from . import instance
+import configuration
+import automate
+import instance
 
 
 # The path at which boto3 expects the user's AWS credentials. Must be passed
@@ -23,7 +23,7 @@ AWS_CREDENTIALS_PATH = "~/.aws/credentials"
 
 
 # An S3 URL at which the maintainers have published a Cirrus build.
-PUBLISHED_BUILD = "s3://cirrus-public"
+PUBLISHED_BUILD = "s3://cirrus-bucket-390693756238"
 
 
 # The name to give to the server AMI.
@@ -189,10 +189,11 @@ def _set_up_region():
     configuration.config(False)["aws"]["region"] = region
 
     # Clear any cached AWS resources, which may point to the wrong region.
-    from . import resources
+    import resources
     resources.resources = resources.ResourceManager(region)
     automate.resources = resources.resources
     instance.resources = resources.resources
+    print("In _set_up_region", instance.resources)
 
 
 def _make_server_image():
@@ -228,10 +229,10 @@ def _make_server_image():
 
 
 def _set_up_instance_resources():
-    """Set up resources that are needed by `automate.Instance`.
+    """Set up resources that are needed by `instance.Instance`.
     """
     explanation = ("Can we create an IAM role named '%s' in your AWS account?"
-                   % automate.Instance.ROLE_NAME)
+                   % instance.Instance.ROLE_NAME)
     PROMPTS = ("y/n",)
     validator = lambda c: c in ("y", "n")
     postprocess = lambda c: c == "y"
@@ -241,7 +242,7 @@ def _set_up_instance_resources():
         return
 
     explanation = ("Can we create a key pair named '%s' in your AWS account?"
-                   % automate.Instance.KEY_PAIR_NAME)
+                   % instance.Instance.KEY_PAIR_NAME)
     PROMPTS = ("y/n",)
     validator = lambda c: c in ("y", "n")
     postprocess = lambda c: c == "y"
@@ -251,7 +252,7 @@ def _set_up_instance_resources():
         return
 
     explanation = ("Can we create a security group named '%s' in your AWS "
-                   "account?" % automate.Instance.SECURITY_GROUP_NAME)
+                   "account?" % instance.Instance.SECURITY_GROUP_NAME)
     PROMPTS = ("y/n",)
     validator = lambda c: c in ("y", "n")
     postprocess = lambda c: c == "y"
@@ -261,7 +262,7 @@ def _set_up_instance_resources():
         return
 
     explanation = ("Can we create an instance profile named '%s' in your AWS "
-                   "account?" % automate.Instance.INSTANCE_PROFILE_NAME)
+                   "account?" % instance.Instance.INSTANCE_PROFILE_NAME)
     PROMPTS = ("y/n",)
     validator = lambda c: c in ("y", "n")
     postprocess = lambda c: c == "y"
@@ -271,10 +272,10 @@ def _set_up_instance_resources():
         return
 
     def _do_async():
-        automate.Instance.set_up_role()
-        automate.Instance.set_up_key_pair()
-        automate.Instance.set_up_security_group()
-        automate.Instance.set_up_instance_profile()
+        instance.Instance.set_up_role()
+        instance.Instance.set_up_key_pair()
+        instance.Instance.set_up_security_group()
+        instance.Instance.set_up_instance_profile()
 
     t = threading.Thread(target=_do_async,
                          name="_set_up_instance_resources async portion")
@@ -389,7 +390,7 @@ def prompt(explanation, prompts, validator=None, postprocess=None):
     print(explanation)
 
     while True:
-        values = [raw_input(prompt + ": ") for prompt in prompts]
+        values = [input(prompt + ": ") for prompt in prompts]
         if validator(*values):
             break
         else:

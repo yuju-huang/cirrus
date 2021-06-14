@@ -12,6 +12,7 @@ S3Client::S3Client() {
   // try big timeout
   clientConfig.connectTimeoutMs = 30000;
   clientConfig.requestTimeoutMs = 60000;
+  clientConfig.caFile = "/etc/pki/tls/certs/ca-bundle.crt";
 
   s3_client.reset(new Aws::S3::S3Client(clientConfig));
 }

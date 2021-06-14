@@ -5,8 +5,8 @@ from abc import ABCMeta, abstractmethod
 
 import messenger
 from CostModel import CostModel
-from . import automate
-from . import configuration
+import automate
+import configuration
 
 # The amount of time, in seconds, that passes between a parameter server being
 #   killed and its workers dying due to loss of contact with it.

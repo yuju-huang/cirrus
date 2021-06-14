@@ -1,0 +1,2 @@
+zip deploy.zip handler.py get_s3_object parameter_server lib/*
+aws s3api put-object --bucket cirrus-bucket-390693756238 --key lambda_package --body ./deploy.zip

@@ -1,0 +1,5 @@
+The main.cpp here is just an example for building the .so files.
+
+The real thing we need to do is to copy our cpp executable into
+the package folder and follow the README there to build a zip and
+then upload to S3 as a Lambda package.

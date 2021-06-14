@@ -7,20 +7,25 @@ import threading
 import inspect
 import datetime
 
-from . import handler
-from . import configuration
-from .instance import Instance
-from . import utilities
-from .resources import resources
+import handler
+import configuration
+import instance
+import utilities
+import aws_resources
+
+# The path at which to save the configuration in a worker Lambda.
+CONFIG_PATH = "/tmp/config.cfg"
 
 # The type of instance to use for compilation.
-BUILD_INSTANCE_TYPE = "c4.4xlarge"
+#BUILD_INSTANCE_TYPE = "c4.4xlarge"
+BUILD_INSTANCE_TYPE = "t3.micro"
 
 # The disk size, in GB, to use for compilation.
 BUILD_INSTANCE_SIZE = 32
 
 # The type of instance to use for creating server images.
-SERVER_INSTANCE_TYPE = "m4.2xlarge"
+#SERVER_INSTANCE_TYPE = "m4.2xlarge"
+SERVER_INSTANCE_TYPE = "t3.micro"
 
 # The disk size, in GB, to use for parameter servers.
 SERVER_INSTANCE_SIZE = 1
@@ -117,74 +122,74 @@ def make_amazon_build_image(name):
     log = logging.getLogger("cirrus.automate.make_amazon_build_image")
 
     log.debug("Deleting any existing images with the same name.")
-    Instance.delete_images(name)
+    instance.Instance.delete_images(name)
 
     log.debug("Launching an instance.")
     region = configuration.config()["aws"]["region"]
-    instance = Instance("cirrus_make_amazon_build_image",
-                        ami_id=AMAZON_BASE_IMAGES[region],
-                        disk_size=BUILD_INSTANCE_SIZE,
-                        typ=BUILD_INSTANCE_TYPE,
-                        username="ec2-user")
-    instance.start()
+    inst = instance.Instance("cirrus_make_amazon_build_image",
+                             ami_id=AMAZON_BASE_IMAGES[region],
+                             disk_size=BUILD_INSTANCE_SIZE,
+                             typ=BUILD_INSTANCE_TYPE,
+                             username="ec2-user")
+    inst.start()
 
     log.debug("Setting up the environment.")
 
     # Install some necessary packages.
-    instance.run_command("yes | sudo yum install git "
+    inst.run_command("yes | sudo yum install git "
         "glibc-static openssl-static.x86_64 zlib-static.x86_64 libcurl-devel")
-    instance.run_command("yes | sudo yum groupinstall \"Development Tools\"")
+    inst.run_command("yes | sudo yum groupinstall \"Development Tools\"")
 
     # Install some useful tools.
-    instance.run_command("yes | sudo yum install gdb")
-    instance.run_command("yes | sudo yum install htop")
-    instance.run_command("yes | sudo yum install mosh")
+    inst.run_command("yes | sudo yum install gdb")
+    inst.run_command("yes | sudo yum install htop")
+    inst.run_command("yes | sudo yum install mosh")
 
 
     # The above installed a recent version of gcc, but an old version of g++.
     #   Install a newer version of g++.
-    instance.run_command("yes | sudo yum remove gcc48-c++")
-    instance.run_command("yes | sudo yum install gcc72-c++")
+    inst.run_command("yes | sudo yum remove gcc48-c++")
+    inst.run_command("yes | sudo yum install gcc72-c++")
 
     # The above pulled in an old version of cmake. Install a newer version of
     #   cmake by compiling from source.
-    instance.run_command(
+    inst.run_command(
         "wget https://cmake.org/files/v3.10/cmake-3.10.0.tar.gz")
-    instance.run_command("tar -xvzf cmake-3.10.0.tar.gz")
-    instance.run_command("cd cmake-3.10.0; ./bootstrap")
-    instance.run_command("cd cmake-3.10.0; make -j 16")
-    instance.run_command("cd cmake-3.10.0; sudo make install")
+    inst.run_command("tar -xvzf cmake-3.10.0.tar.gz")
+    inst.run_command("cd cmake-3.10.0; ./bootstrap")
+    inst.run_command("cd cmake-3.10.0; make -j 16")
+    inst.run_command("cd cmake-3.10.0; sudo make install")
 
     # Install newer versions of as and ld.
-    instance.run_command("yes | sudo yum install binutils")
+    inst.run_command("yes | sudo yum install binutils")
 
     # The above pulled in an old version of make. Install a newer version of
     #   make by compiling from source.
-    instance.run_command("wget https://ftp.gnu.org/gnu/make/make-4.2.tar.gz")
-    instance.run_command("tar -xf make-4.2.tar.gz")
-    instance.run_command("cd make-4.2; ./configure")
-    instance.run_command("cd make-4.2; make -j 16")
-    instance.run_command("cd make-4.2; sudo make install")
-    instance.run_command("sudo ln -sf /usr/local/bin/make /usr/bin/make")
+    inst.run_command("wget https://ftp.gnu.org/gnu/make/make-4.2.tar.gz")
+    inst.run_command("tar -xf make-4.2.tar.gz")
+    inst.run_command("cd make-4.2; ./configure")
+    inst.run_command("cd make-4.2; make -j 16")
+    inst.run_command("cd make-4.2; sudo make install")
+    inst.run_command("sudo ln -sf /usr/local/bin/make /usr/bin/make")
 
     # Compile glibc from source with static NSS. Use the resulting libpthread.a
     #   instead of the default.
-    instance.run_command("git clone git://sourceware.org/git/glibc.git")
-    instance.run_command("cd glibc; git checkout release/2.28/master")
-    instance.run_command("mkdir glibc/build")
-    instance.run_command("cd glibc/build; ../configure --disable-sanity-checks "
+    inst.run_command("git clone git://sourceware.org/git/glibc.git")
+    inst.run_command("cd glibc; git checkout release/2.28/master")
+    inst.run_command("mkdir glibc/build")
+    inst.run_command("cd glibc/build; ../configure --disable-sanity-checks "
                          "--enable-static-nss --prefix ~/glibc_build")
-    instance.run_command("cd glibc/build; make -j 16")
-    instance.run_command("cd glibc/build; make install")
-    instance.run_command("sudo cp ~/glibc_build/lib/libpthread.a "
+    inst.run_command("cd glibc/build; make -j 16")
+    inst.run_command("cd glibc/build; make install")
+    inst.run_command("sudo cp ~/glibc_build/lib/libpthread.a "
                          "/usr/lib64/libpthread.a")
-    instance.run_command("sudo cp ~/glibc_build/lib/libc.a /usr/lib64/libc.a")
+    inst.run_command("sudo cp ~/glibc_build/lib/libc.a /usr/lib64/libc.a")
 
     log.debug("Saving the image.")
-    instance.save_image(name, False)
+    inst.save_image(name, False)
 
     log.debug("Terminating the instance.")
-    instance.cleanup()
+    inst.cleanup()
 
 
 def make_ubuntu_build_image(name):
@@ -199,40 +204,40 @@ def make_ubuntu_build_image(name):
     log = logging.getLogger("cirrus.automate.make_ubuntu_build_image")
 
     log.debug("Deleting any existing images with the same name.")
-    Instance.delete_images(name)
+    instance.Instance.delete_images(name)
 
     log.debug("Launching an instance.")
     region = configuration.config()["aws"]["region"]
-    instance = Instance("cirrus_make_ubuntu_build_image",
-                        ami_id=UBUNTU_BASE_IMAGES[region],
-                        disk_size=BUILD_INSTANCE_SIZE,
-                        typ=BUILD_INSTANCE_TYPE,
-                        username="ubuntu")
-    instance.start()
+    inst = instance.Instance("cirrus_make_ubuntu_build_image",
+                             ami_id=UBUNTU_BASE_IMAGES[region],
+                             disk_size=BUILD_INSTANCE_SIZE,
+                             typ=BUILD_INSTANCE_TYPE,
+                             username="ubuntu")
+    inst.start()
 
     log.debug("Setting up the environment.")
 
     # Sometimes `apt-get update` doesn't work, returning exit code 100.
     while True:
-        status, _, _ = instance.run_command("sudo apt-get update", False)
+        status, _, _ = inst.run_command("sudo apt-get update", False)
         if status == 0:
             break
 
-    instance.run_command("yes | sudo apt-get install build-essential cmake \
+    inst.run_command("yes | sudo apt-get install build-essential cmake \
                           automake zlib1g-dev libssl-dev libcurl4-nss-dev \
                           bison libldap2-dev libkrb5-dev")
-    instance.run_command("yes | sudo apt-get install awscli")
+    inst.run_command("yes | sudo apt-get install awscli")
 
     # Install some useful tools.
-    instance.run_command("yes | sudo apt-get install gdb")
-    instance.run_command("yes | sudo apt-get install htop")
-    instance.run_command("yes | sudo apt-get install mosh")
+    inst.run_command("yes | sudo apt-get install gdb")
+    inst.run_command("yes | sudo apt-get install htop")
+    inst.run_command("yes | sudo apt-get install mosh")
 
     log.debug("Saving the image.")
-    instance.save_image(name, False)
+    inst.save_image(name, False)
 
     log.debug("Terminating the instance.")
-    instance.cleanup()
+    inst.cleanup()
 
 
 def make_executables(path, image_owner_name, username):
@@ -251,25 +256,25 @@ def make_executables(path, image_owner_name, username):
     log = logging.getLogger("cirrus.automate.make_executables")
 
     log.debug("Launching an instance.")
-    instance = Instance("cirrus_make_executables",
-                        ami_owner_name=image_owner_name,
-                        disk_size=BUILD_INSTANCE_SIZE,
-                        typ=BUILD_INSTANCE_TYPE,
-                        username=username)
-    instance.start()
+    inst = instance.Instance("cirrus_make_executables",
+                             ami_owner_name=image_owner_name,
+                             disk_size=BUILD_INSTANCE_SIZE,
+                             typ=BUILD_INSTANCE_TYPE,
+                             username=username)
+    inst.start()
 
     log.debug("Building Cirrus.")
-    instance.run_command("git clone https://github.com/jcarreira/cirrus.git")
-    instance.run_command("cd cirrus; ./bootstrap.sh")
-    instance.run_command("cd cirrus; make -j 16")
+    inst.run_command("git clone https://github.com/jcarreira/cirrus.git")
+    inst.run_command("cd cirrus; ./bootstrap.sh")
+    inst.run_command("cd cirrus; make -j 16")
 
     log.debug("Publishing executables.")
     for executable in EXECUTABLES:
-        instance.upload_s3("~/cirrus/src/%s" % executable,
+        inst.upload_s3("~/cirrus/src/%s" % executable,
                            path + "/" + executable, public=True)
 
     log.debug("Terminating the instance.")
-    instance.cleanup()
+    inst.cleanup()
 
     log.debug("Done.")
 
@@ -339,29 +344,29 @@ def make_server_image(name, executables_path):
     log = logging.getLogger("cirrus.automate.make_server_image")
 
     log.debug("Checking for already-existent images.")
-    Instance.delete_images(name)
+    instance.Instance.delete_images(name)
 
     log.debug("Launching an instance.")
     region = configuration.config()["aws"]["region"]
-    instance = Instance("cirrus_make_server_image",
-                        ami_id=UBUNTU_BASE_IMAGES[region],
-                        disk_size=SERVER_INSTANCE_SIZE,
-                        typ=SERVER_INSTANCE_TYPE,
-                        username="ubuntu")
-    instance.start()
+    inst = instance.Instance("cirrus_make_server_image",
+                             ami_id=UBUNTU_BASE_IMAGES[region],
+                             disk_size=SERVER_INSTANCE_SIZE,
+                             typ=SERVER_INSTANCE_TYPE,
+                             username="ubuntu")
+    inst.start()
 
     log.debug("Putting parameter_server executable on instance.")
-    instance.download_s3(executables_path + "/ubuntu/parameter_server",
-                         "~/parameter_server")
+    inst.download_s3(executables_path + "/ubuntu/parameter_server",
+                     "~/parameter_server")
 
     log.debug("Setting permissions of executable.")
-    instance.run_command("chmod +x ~/parameter_server")
+    inst.run_command("chmod +x ~/parameter_server")
 
     log.debug("Creating image from instance.")
-    instance.save_image(name, False)
+    inst.save_image(name, False)
 
-    log.debug("Terminating the instance.")
-    instance.cleanup()
+    log.debug("Terminating the inst.")
+    inst.cleanup()
 
     log.debug("Done.")
 
@@ -393,7 +398,7 @@ def set_up_bucket():
         if bucket_info["Name"] == bucket_name:
             exists = True
             break
-
+    """
     if exists:
         log.debug("Deleting contents of existing bucket.")
         bucket = resources.s3_resource.Bucket(bucket_name)
@@ -401,6 +406,7 @@ def set_up_bucket():
             obj.delete()
         log.debug("Deleting existing bucket.")
         bucket.delete()
+    """
 
     log.debug("Creating bucket.")
     constraint = configuration.config()["aws"]["region"]
@@ -505,9 +511,9 @@ def make_lambda(name, lambda_package_path, lambda_size, concurrency=-1):
     assert lambda_size % 64 == 0, \
         "lambda_size %d is not divisible by 64." % lambda_size
 
-    from . import setup
+    import setup
 
-    assert isinstance(concurrency, (int, long))
+    assert isinstance(concurrency, int)
     assert concurrency >= -1
 
     log = logging.getLogger("cirrus.automate.make_lambda")
@@ -525,6 +531,7 @@ def make_lambda(name, lambda_package_path, lambda_size, concurrency=-1):
     bucket = resources.s3_resource.Bucket(bucket_name)
     src_bucket, src_key = _split_s3_url(lambda_package_path)
     src = {"Bucket": src_bucket, "Key": src_key}
+    print("src=", src, ", src_key=", src_key)
     bucket.copy(src, src_key)
 
     log.debug("Creating Lambda.")
@@ -624,7 +631,7 @@ def maintain_workers(n, config, ps, stop_event, experiment_id, lambda_size):
         lambda_size (int): As for `make_lambda`.
     """
     # Imported here to prevent a circular dependency issue.
-    from . import setup
+    import setup
 
     # See the documentation for the constant.
     assert n <= MAX_WORKERS_PER_EXPERIMENT
@@ -673,6 +680,8 @@ def maintain_workers(n, config, ps, stop_event, experiment_id, lambda_size):
 
             generation += 1
 
+    with open(CONFIG_PATH, "w+") as config_file:
+        config_file.write(config)
 
     # Start the `clean_up` thread. Return immediately.
     thread_name = "Exp #%02d Cleanup" % experiment_id
@@ -694,3 +703,6 @@ def _split_s3_url(url):
     bucket = url[len("s3://"):].split("/")[0]
     key = url[len("s3://") + len(bucket) + 1:]
     return bucket, key
+
+resources = aws_resources.get_resource()
+print("In automate.py, resources=", resources)
