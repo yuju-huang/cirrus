@@ -4,6 +4,8 @@
 
 using namespace Aws::S3;
 
+//#define RUN_LOCAL 1
+
 namespace cirrus {
 S3Client::S3Client() {
   Aws::Client::ClientConfiguration clientConfig;
@@ -12,7 +14,9 @@ S3Client::S3Client() {
   // try big timeout
   clientConfig.connectTimeoutMs = 30000;
   clientConfig.requestTimeoutMs = 60000;
+#ifndef RUN_LOCAL
   clientConfig.caFile = "/etc/pki/tls/certs/ca-bundle.crt";
+#endif
 
   s3_client.reset(new Aws::S3::S3Client(clientConfig));
 }

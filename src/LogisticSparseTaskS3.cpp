@@ -9,6 +9,8 @@
 
 #undef DEBUG
 
+#define DEBUG 1
+
 namespace cirrus {
 
 void LogisticSparseTaskS3::push_gradient(LRSparseGradient* lrg) {
@@ -54,6 +56,7 @@ bool LogisticSparseTaskS3::get_dataset_minibatch(
   auto finish2 = get_time_us();
   double bw = 1.0 * dataset->getSizeBytes() /
     (finish2-start) * 1000.0 * 1000 / 1024 / 1024;
+  std::cout << "[WORKER] Get dataset elapsed (us): " << finish1 - start << std::endl;
   std::cout << "[WORKER] Get Sample Elapsed (S3) "
     << " minibatch size: " << config.get_minibatch_size()
     << " part1(us): " << (finish1 - start)
@@ -88,7 +91,7 @@ void LogisticSparseTaskS3::run(const Configuration& config,
       config, config.get_s3_size(), config.get_minibatch_size(),
       true, worker);
 
-  std::cout << "[WORKER] starting loop" << std::endl;
+  std::cout << "[WORKER] starting loop, iters=" << test_iters << std::endl;
 
   uint64_t version = 1;
   SparseLRModel model(1 << config.get_model_bits());
@@ -118,7 +121,7 @@ void LogisticSparseTaskS3::run(const Configuration& config,
     sparse_model_get->get_new_model_inplace(*dataset, model, config);
 
 #ifdef DEBUG
-    std::cout << "get model elapsed(us): " << get_time_us() - now << std::endl;
+    std::cout << "[WORKER] Get model elapsed (us): " << get_time_us() - now << std::endl;
     std::cout << "Checking model" << std::endl;
     //model.check();
     std::cout << "Computing gradient" << "\n";
@@ -136,9 +139,11 @@ void LogisticSparseTaskS3::run(const Configuration& config,
     }
 #ifdef DEBUG
     auto elapsed_us = get_time_us() - now;
+    std::cout << "[WORKER] Compute gradient elapsed (us): " << elapsed_us << std::endl;
     std::cout << "[WORKER] Gradient compute time (us): " << elapsed_us
       << " at time: " << get_time_us()
       << " version " << version << "\n";
+    now = get_time_us();
 #endif
     gradient->setVersion(version++);
 
@@ -151,7 +156,8 @@ void LogisticSparseTaskS3::run(const Configuration& config,
       exit(-1);
     }
 #ifdef DEBUG
-    std::cout << get_time_us() << " [WORKER] Sent gradient" << std::endl;
+    std::cout << "[WORKER] Sent gradient elapsed (us): "
+              <<  get_time_us() - now << std::endl;
 #endif
     count++;
     if (count % 10 == 0 && !printed_rate) {

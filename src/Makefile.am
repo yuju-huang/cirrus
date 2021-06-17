@@ -4,7 +4,7 @@ AUTOMAKE_OPTIONS = foreign
 
 CXX = g++
 
-bin_PROGRAMS = parameter_server ps_test csv_to_libsvm get_s3_object $(TOP_DIR)/tests/test_travis_lr/test_lr \
+bin_PROGRAMS = parameter_server parameter_server_local ps_test csv_to_libsvm get_s3_object $(TOP_DIR)/tests/test_travis_lr/test_lr \
                $(TOP_DIR)/tests/test_travis_lr/test_ps $(TOP_DIR)/tests/test_travis_lr/worker \
                $(TOP_DIR)/tests/test_travis_lr/error
 
@@ -51,6 +51,8 @@ CPP_SOURCES = InputReader.cpp Utils.cpp \
 	      PSSparseServerTask.cpp PSSparseServerInterface.cpp
 
 parameter_server_SOURCES  = parameter_server.cpp $(CPP_SOURCES)
+
+parameter_server_local_SOURCES  = parameter_server.cpp $(CPP_SOURCES)
 
 ps_test_SOURCES = PSSparseServerTaskTest.cpp $(CPP_SOURCES)
 
